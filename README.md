@@ -1,15 +1,15 @@
-# Task 2: IoT Data Logging (ESP32)
+# Task 2: IoT Data Logging with Live Graph (ESP32)
 
-This document guides you through setting up a local web server on an ESP32 to display sensor data.
+This document guides you through setting up a local web server on an ESP32 to display sensor data with a live-updating graph.
 
 ## Goal
 
-Send sensor readings to a local web dashboard.
+Send sensor readings to a local web dashboard and visualize them in a live graph.
 
 ## Requirements
 
 *   ESP32 Development Board
-*   We will use a DHT11 sensor
+*   DHT11 sensor
 *   Arduino IDE with ESP32 board support
 
 ## Steps
@@ -33,13 +33,13 @@ Send sensor readings to a local web dashboard.
 
 3.  **Write the code:**
     *   Open the `task2.ino` file in the Arduino IDE.
-    *   Update the `ssid` and `password` variables with the Wi-Fi credentials.
+    *   Update the `ssid` and `password` variables with your Wi-Fi credentials.
     *   Upload the code to your ESP32.
 
 4.  **Test the setup:**
     *   Open the Serial Monitor to see the IP address of the ESP32.
-    *   Press EN/Reset button after flashing the code if necessary.
-    *   Open a web browser and enter the IP address to see the sensor readings. This website automatically updates every 5 secs so that data remains updated with the readings we don't need to hit refresh again and again.
+    *   Press the EN/Reset button after flashing the code if necessary.
+    *   Open a web browser and enter the IP address to see the sensor readings displayed on a live-updating graph.
 
 ## Mandatory Libraries and Code Pre-requisites
 
@@ -51,20 +51,29 @@ Before proceeding, ensure you have the following libraries and tools installed:
 
 3. **DHT Sensor Library**: Install the `DHT sensor library` by Adafruit as described earlier.
 
-4. **WiFi Library**: The `WiFi.h` library is included with the ESP32 board package. Ensure it is available in your Arduino IDE.
+4. **WiFi Library**: The `WiFi.h` library is included with the ESP32 board package.
 
-5. **WebServer Library**: The `WebServer.h` library is also included with the ESP32 board package. Verify its availability.
+5. **WebServer Library**: The `WebServer.h` library is also included with the ESP32 board package.
 
 These libraries are essential for compiling and running the `task2.ino` sketch successfully.
 
-## Code Explaination
+## Code Explanation
 
 The `task2.ino` sketch does the following:
 
-*   Includes the necessary libraries: `WiFi.h` for Wi-Fi, `WebServer.h` for the web server, and `DHT.h` for the sensor.
+*   Includes the necessary libraries: `WiFi.h`, `WebServer.h`, `DHT.h`, and `<vector>`.
 *   Defines the Wi-Fi credentials and the DHT sensor pin.
 *   Initializes the DHT sensor and the web server.
-*   In the `setup()` function, it connects to Wi-Fi and starts the web server.
-*   The `handleRoot()` function is called when a request is made to the root URL. It reads the sensor data, creates an HTML page with the data, and sends it to the client. The HTML includes a meta tag that automatically refreshes the page every 5 seconds.
-*   The `loop()` function continuously handles client requests.
-*   Open Serial Monitor and change baud rate to 115200 to properly see the output.
+*   Uses `std::vector` to store a history of the last 20 temperature and humidity readings.
+*   In the `setup()` function, it connects to Wi-Fi and starts the web server with two endpoints:
+    *   `/`: Serves the main HTML page which includes the chart.
+    *   `/data`: Provides the sensor data history in JSON format.
+*   The `loop()` function does two things:
+    1.  Handles incoming client requests.
+    2.  Reads the sensor every 5 seconds using a non-blocking timer (`millis()`) and updates the data history.
+*   The `handleRoot()` function sends an HTML page to the client. This page contains:
+    *   A `<canvas>` element for the chart.
+    *   A reference to the Chart.js library from a CDN.
+    *   JavaScript code to fetch data from the `/data` endpoint every 5 seconds and update the chart.
+*   The `handleData()` function constructs and sends a JSON object containing the temperature and humidity history.
+*   To view the output, open the Serial Monitor with a baud rate of 115200.

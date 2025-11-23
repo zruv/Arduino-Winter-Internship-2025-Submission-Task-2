@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DHT.h>
+#include <vector>
 
 // Replace with your network credentials
 const char* ssid = "Airtel_Systumm HANG";
@@ -13,30 +14,80 @@ const char* password = "Bvcoe@123";
 DHT dht(DHTPIN, DHTTYPE);
 WebServer server(80);
 
-void handleRoot() {
-  // Read sensor data
+// Data history
+std::vector<float> tempHistory;
+std::vector<float> humHistory;
+const int maxHistorySize = 20;
+
+// Timer for reading sensor
+unsigned long lastReadTime = 0;
+const long readInterval = 5000; // 5 seconds
+
+void readSensorData() {
   float humidity = dht.readHumidity();
   float temperature = dht.readTemperature();
 
-  // Check if any reads failed and exit early (to try again).
   if (isnan(humidity) || isnan(temperature)) {
-    server.send(200, "text/html", "Failed to read from DHT sensor!");
+    Serial.println("Failed to read from DHT sensor!");
     return;
   }
 
-  // Create the HTML for the web page
-  String html = "<!DOCTYPE html><html><head><title>Sensor Readings</title><meta http-equiv='refresh' content='5'>";
-  html += "<style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f2f2f2; }";
-  html += "h1 { color: #333; } .sensor-data { background-color: #fff; padding: 20px; margin: 20px auto; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 300px; }";
-  html += ".sensor-item { margin: 10px 0; } .label { font-weight: bold; } .value { color: #007BFF; }</style>";
-  html += "</head><body>";
-  html += "<h1>ESP32 Sensor Readings</h1>";
-  html += "<div class='sensor-data'>";
-  html += "<div class='sensor-item'><span class='label'>Temperature:</span> <span class='value'>" + String(temperature) + " &deg;C</span></div>";
-  html += "<div class='sensor-item'><span class='label'>Humidity:</span> <span class='value'>" + String(humidity) + " %</span></div>";
-  html += "</div></body></html>";
+  // Add to history
+  tempHistory.push_back(temperature);
+  humHistory.push_back(humidity);
 
+  // Limit history size
+  if (tempHistory.size() > maxHistorySize) {
+    tempHistory.erase(tempHistory.begin());
+  }
+  if (humHistory.size() > maxHistorySize) {
+    humHistory.erase(humHistory.begin());
+  }
+}
+
+void handleRoot() {
+  String html = "<!DOCTYPE html><html><head><title>Sensor Readings with Chart</title>";
+  html += "<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>";
+  html += "<style>";
+  html += "body { font-family: Arial, sans-serif; text-align: center; background-color: #f2f2f2; }";
+  html += "h1 { color: #333; }";
+  html += ".chart-container { width: 80%; margin: 0 auto; }";
+  html += "</style></head><body>";
+  html += "<h1>ESP32 Sensor Readings</h1>";
+  html += "<div class='chart-container'><canvas id='sensorChart'></canvas></div>";
+  html += "<script>";
+  html += "const ctx = document.getElementById('sensorChart').getContext('2d');";
+  html += "const sensorChart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [ { label: 'Temperature (°C)', data: [], borderColor: 'rgba(255, 99, 132, 1)', borderWidth: 1, fill: false }, { label: 'Humidity (%)', data: [], borderColor: 'rgba(54, 162, 235, 1)', borderWidth: 1, fill: false } ] }, options: { scales: { x: { type: 'linear', position: 'bottom', ticks: { stepSize: 1, callback: function(value, index, values) { return index; } } } } } });";
+  html += "function updateChart() { fetch('/data').then(response => response.json()).then(data => { sensorChart.data.labels = data.labels; sensorChart.data.datasets[0].data = data.temperatures; sensorChart.data.datasets[1].data = data.humidities; sensorChart.update(); }); }";
+  html += "setInterval(updateChart, 5000); window.onload = updateChart;";
+  html += "</script></body></html>";
   server.send(200, "text/html", html);
+}
+
+void handleData() {
+  String json = "{\"labels\":[";
+  for (size_t i = 0; i < tempHistory.size(); ++i) {
+    json += String(i);
+    if (i < tempHistory.size() - 1) {
+      json += ",";
+    }
+  }
+  json += "],\"temperatures\":[";
+  for (size_t i = 0; i < tempHistory.size(); ++i) {
+    json += String(tempHistory[i]);
+    if (i < tempHistory.size() - 1) {
+      json += ",";
+    }
+  }
+  json += "],\"humidities\":[";
+  for (size_t i = 0; i < humHistory.size(); ++i) {
+    json += String(humHistory[i]);
+    if (i < humHistory.size() - 1) {
+      json += ",";
+    }
+  }
+  json += "]}";
+  server.send(200, "application/json", json);
 }
 
 void setup() {
@@ -55,9 +106,15 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   server.on("/", handleRoot);
+  server.on("/data", handleData);
   server.begin();
 }
 
 void loop() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastReadTime >= readInterval) {
+    lastReadTime = currentTime;
+    readSensorData();
+  }
   server.handleClient();
 }
